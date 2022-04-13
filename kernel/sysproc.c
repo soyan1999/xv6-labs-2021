@@ -80,7 +80,32 @@ sys_sleep(void)
 int
 sys_pgaccess(void)
 {
-  // lab pgtbl: your code here.
+  uint64 va, buf_addr, buf_in = 0;
+  int count;
+
+  if (argaddr(0, &va) < 0)
+    return -1;
+  if (argint(1, &count) < 0)
+    return -1;
+  if (argaddr(2, &buf_addr) < 0)
+    return -1;
+  
+  if (count > 64)
+    return -1;
+
+  pte_t *pte;
+  for (int i = 0; i < count; i++) {
+    pte = walk(myproc()->pagetable, va + i*PGSIZE, 0);
+    if (pte == 0) continue;
+    if ((*pte) & PTE_A) {
+      buf_in |= (1UL << i);
+      (*pte) &= ~(PTE_A);
+    }
+  }
+
+  if (copyout(myproc()->pagetable, buf_addr, (char *)&buf_in, count>>3) != 0)
+    return -1;
+
   return 0;
 }
 #endif

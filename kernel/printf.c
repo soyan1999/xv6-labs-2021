@@ -132,3 +132,27 @@ printfinit(void)
   initlock(&pr.lock, "pr");
   pr.locking = 1;
 }
+
+static inline uint64
+r_fp()
+{
+  uint64 x;
+  asm volatile("mv %0, s0" : "=r" (x) );
+  return x;
+}
+
+void
+do_backtrace(uint64 fp)
+{
+  if (fp == PGROUNDUP(fp)) return;
+  printptr(*((uint64*)(fp - 8)));
+  printf("\n");
+  do_backtrace(*((uint64*)(fp - 16)));
+}
+
+void 
+backtrace(void)
+{
+  uint64 fp = r_fp();
+  do_backtrace(fp);
+}

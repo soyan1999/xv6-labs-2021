@@ -92,6 +92,16 @@ struct proc {
   int killed;                  // If non-zero, have been killed
   int xstate;                  // Exit status to be returned to parent's wait
   int pid;                     // Process ID
+  uint64 sig_call;             // sig call func
+  uint64 saved_a[8];
+  uint64 saved_t[7];
+  uint64 saved_s[12];
+  uint64 saved_ra;
+  uint64 saved_sp;
+  uint64 saved_epc;
+  int sig_count;               // sig count
+  int sig_duration;            // sig duration
+  int sig_in;                  // processing sig func
 
   // wait_lock must be held when using this:
   struct proc *parent;         // Parent process

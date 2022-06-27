@@ -20,6 +20,8 @@ struct run {
 
 struct {
   struct spinlock lock;
+  struct spinlock ref_lock;
+  char page_ref[(PHYSTOP-KERNBASE)/PGSIZE];
   struct run *freelist;
 } kmem;
 
@@ -27,6 +29,8 @@ void
 kinit()
 {
   initlock(&kmem.lock, "kmem");
+  initlock(&kmem.ref_lock, "ref_lock");
+  memset(kmem.page_ref, 1, (PHYSTOP-KERNBASE)/PGSIZE);
   freerange(end, (void*)PHYSTOP);
 }
 
@@ -52,6 +56,13 @@ kfree(void *pa)
     panic("kfree");
 
   // Fill with junk to catch dangling refs.
+  int ref_count;
+  acquire(&kmem.ref_lock);
+  if ((ref_count = kmem.page_ref[((uint64)pa-KERNBASE)/PGSIZE]) == 0)
+    panic("kfree wrong page ref count");
+  ref_count = --kmem.page_ref[((uint64)pa-KERNBASE)/PGSIZE];
+  release(&kmem.ref_lock);
+  if (ref_count > 0) return;
   memset(pa, 1, PGSIZE);
 
   r = (struct run*)pa;
@@ -76,7 +87,33 @@ kalloc(void)
     kmem.freelist = r->next;
   release(&kmem.lock);
 
-  if(r)
+  if(r) {
     memset((char*)r, 5, PGSIZE); // fill with junk
+    acquire(&kmem.ref_lock);
+    kmem.page_ref[((uint64)r-KERNBASE)/PGSIZE] = 1;
+    release(&kmem.ref_lock);
+  }
   return (void*)r;
+}
+
+void
+cow_ref(void *pa) {
+  acquire(&kmem.ref_lock);
+  if (kmem.page_ref[((uint64)pa-KERNBASE)/PGSIZE] == 0)
+    panic("cow_ref wrong page ref count");
+  kmem.page_ref[((uint64)pa-KERNBASE)/PGSIZE] ++;
+  // printf("cow_ref %x\n",(uint64)pa);
+  release(&kmem.ref_lock);
+}
+
+int
+cow_dec(void *pa) {
+  int ref_count;
+  acquire(&kmem.ref_lock);
+  if (kmem.page_ref[((uint64)pa-KERNBASE)/PGSIZE] == 0)
+    panic("cow_dec wrong page ref count");
+  if ((ref_count=kmem.page_ref[((uint64)pa-KERNBASE)/PGSIZE]) > 1)
+    kmem.page_ref[((uint64)pa-KERNBASE)/PGSIZE] --;
+  release(&kmem.ref_lock);
+  return ref_count;
 }
